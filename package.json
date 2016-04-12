@@ -2,31 +2,23 @@
   "name": "good-file",
   "version": "5.1.2",
   "repository": "git://github.com/hapijs/good-file",
-  "description": "Good reporter file module",
+  "description": "Basic write stream that ensures destination exists before opening for writing.",
   "main": "lib/index.js",
   "scripts": {
-    "test": "lab -m 5000 -t 100 -v -La code",
-    "test-cov-html": "lab -m 5000 -r html -o coverage.html -La code"
+    "test": "lab -m 5000 -t 100 -v -La code"
   },
   "dependencies": {
-    "big-time": "1.0.x",
-    "fs-extra": "0.24.0",
-    "good-squeeze": "2.x.x",
-    "hoek": "2.x.x",
-    "joi": "5.x.x",
-    "json-stringify-safe": "5.0.x",
-    "moment": "2.11.x",
-    "through2": "0.6.x"
-  },
-  "peerDependencies": {
-    "good": ">= 6.x.x"
+    "fs-extra": "0.26.7"
   },
   "devDependencies": {
-    "code": "1.x.x",
-    "lab": "6.x.x"
+    "code": "2.x.x",
+    "good-squeeze": "3.x.x",
+    "hoek": "3.x.x",
+    "lab": "10.x.x",
+    "stand-in": "3.2.x"
   },
   "engines": {
-    "node": ">=0.10.x"
+    "node": ">=4.0.0"
   },
   "license": "BSD-3-Clause"
 }

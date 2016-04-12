@@ -1,38 +1,21 @@
 # good-file
 
-File logging module for [good](https://github.com/hapijs/good) process monitoring.
+Simple Node write stream to write to a file.
 
 ![Build Status](https://travis-ci.org/hapijs/good-file.svg?branch=master)![Current Version](https://img.shields.io/npm/v/good-file.svg)
 
 Lead Maintainer: [Adam Bretz](https://github.com/arb)
 
-## Usage
-
-`good-file` is a [good](https://github.com/hapijs/good) reporter implementation to write [hapi](http://hapijs.com/) server events to the local file system.
-
 ## Good File
-### GoodFile (events, config)
 
-Creates a new GoodFile object where:
+This is a basic write stream wrapper of Node core `Fs.createWriteStream()`. The advantage is `GoodFile` will create the file and directory if they do not already exist.
 
-- `events` - an object of key value pairs.
-	- `key` - one of the supported [good events](https://github.com/hapijs/good) indicating the hapi event to subscribe to
-	- `value` - a single string or an array of strings to filter incoming events. "\*" indicates no filtering. `null` and `undefined` are assumed to be "\*"
-- `config` - specifications for the file that will be used. All file operations are done in "append" mode.
-	- `String` - a string that indicates the log file to use. Opened in "append" mode.
-	- `Object` - a configuration object for automatically generated files. Auto generated files use the following pattern for file naming: "{`options.prefix`}-{utcTime.format(`options.format`)}-{random string}.{`settings.extension`}"
-	 	- `path` - required. Path to the directory to store log files.
-	 	- `[format]` - a [MomentJs](http://momentjs.com/docs/#/displaying/format/) format string. Defaults to "YYYY-MM-DD".
-	 	- `[extension]` - file extension to use when creating a file. Defaults to ".log". Set to "" for no extension.
-	 	- `[prefix]` - file name prefix to use when creating a file. Defaults to "good-file"
-	 	- `[rotate]` - a string indicating a log rotation time span. The designated time span will start a timer that will trigger at the *end* of the specified time span. For example, using "daily", a new log file would be created at *approximately* 11:59:59.999 on the current day. Please see [this section](http://momentjs.com/docs/#/manipulating/end-of/) in the Moment.js documentation for more details. The string must be one of the following values: ['hourly', 'daily', 'weekly', 'monthly'].
-	 	
-	 **Limitations** When `config` is an `Object`, a new file is *always* created when the process starts, regardless of `rotate` option; this is to prevent collisions. So if you start and stop the process several times in a row, there will be a new file created each time and a new timer will start at the beginning of the process. There are several time related precision issues when working with JavaScript. The log rotation will happen "close enough" to the desired `rotate` option.
+### `new GoodFile (path, options)`
 
-## GoodFile Methods
-### `goodfile.init(stream, emitter, callback)`
-Initializes the reporter with the following arguments:
+Creates a new GoodFile write stream.
+- `path` a string for the file to write to. Will be created *only* if needed.
+- `[options]` optional file stream options. Defaults to `{ encoding: 'utf8', flags: 'a', mode: 0o666 }`. `fd` will always default to -1 during object construction. For more information about options, refer to the [Node documentation](https://nodejs.org/api/fs.html#fs_fs_createwritestream_path_options)
 
-- `stream` - a Node readable stream that will be the source of data for this reporter. It is assumed that `stream` is in `objectMode`.
-- `emitter` - an event emitter object.
-- `callback` - a callback to execute when the start function has complete all the necessary set up steps and is ready to receive data.
+## Rotation
+
+If you're looking for a stream with built-in rotation options, please check out [stream-rotate](https://github.com/nw/stream-rotate) or [rotating-file-stream](https://github.com/iccicci/rotating-file-stream). good-file no longer does file rotation because there are better ways to deal with log rotation at the operating system level.

@@ -1,537 +1,210 @@
+'use strict';
+
 // Load modules
+const Fs = require('fs-extra');
+const Os = require('os');
+const Path = require('path');
+const Stream = require('stream');
 
-var EventEmitter = require('events').EventEmitter;
-var Fs = require('fs');
-var Os = require('os');
-var Path = require('path');
-var Stream = require('stream');
+const Code = require('code');
+const Lab = require('lab');
+const lab = exports.lab = Lab.script();
+const Hoek = require('hoek');
+const SafeJson = require('good-squeeze').SafeJson;
+const GoodFile = require('../lib');
+const StandIn = require('stand-in');
 
-var Code = require('code');
-var Lab = require('lab');
-var Bt = require('big-time');
-var lab = exports.lab = Lab.script();
-var Hoek = require('hoek');
-var GoodFile = require('..');
+// Lab shortcuts
 
-
+const describe = lab.describe;
+const it = lab.it;
+const after = lab.after;
+const before = lab.before;
+const expect = Code.expect;
 
 // Declare internals
 
-var internals = {
-    tempDir: Os.tmpDir()
+const internals = {
+    tempDir: Path.join(Os.tmpDir(), '__good__')
 };
 
-internals.removeLog = function (path) {
+internals.getLog = (path, callback) => {
 
-    if (Fs.existsSync(path)) {
-        Fs.unlinkSync(path);
-    }
-};
-
-
-internals.getLog = function (path, callback) {
-
-    Fs.readFile(path, { encoding: 'utf8' }, function (error, data) {
+    Fs.readFile(path, { encoding: 'utf8' }, (error, data) => {
 
         if (error) {
             return callback(error);
         }
 
-        var results = JSON.parse('[' + data.replace(/\n/g, ',').slice(0, -1) + ']');
+        const results = JSON.parse('[' + data.replace(/\n/g, ',').slice(0, -1) + ']');
         callback(null, results);
     });
 };
 
 
-internals.readStream = function (done) {
+internals.readStream = (done) => {
 
-    var result = new Stream.Readable({ objectMode: true });
-    result._read = Hoek.ignore;
-
-    if (typeof done === 'function') {
-        result.once('end', done);
-    }
+    const result = new Stream.Readable({ objectMode: true });
+    result._read = () => {};
 
     return result;
 };
 
-// Lab shortcuts
 
-var describe = lab.describe;
-var it = lab.it;
-var expect = Code.expect;
 
-describe('GoodFile', function () {
+describe('GoodFile', () => {
 
-    it('allows creation without using new', function (done) {
+    before((done) => {
 
-        var reporter = GoodFile({ log: '*' }, Hoek.uniqueFilename(internals.tempDir));
-        expect(reporter._streams).to.exist();
-        done();
+        Fs.ensureDir(internals.tempDir, done);
     });
 
-    it('allows creation using new', function (done) {
+    it('properly sets up the path if the file name is specified', { plan: 2 }, (done) => {
 
-        var reporter = new GoodFile({ log: '*' }, Hoek.uniqueFilename(internals.tempDir));
-        expect(reporter._streams).to.exist();
-        done();
-    });
+        const file = Hoek.uniqueFilename(internals.tempDir);
+        const filestream = new GoodFile(file);
+        filestream.on('open', () => {
 
-    it('validates the options argument', function (done) {
-
-        expect(function () {
-
-            new GoodFile({ log: '*' });
-        }).to.throw(Error, /value must be a (string|number)/);
-
-        done();
-    });
-
-    it('will clear the timeout on the "stop" event', function (done) {
-
-        var reporter = new GoodFile({ request: '*' }, {
-            path: internals.tempDir,
-            rotate: 'daily'
-        });
-
-        var ee = new EventEmitter();
-        var read = internals.readStream();
-
-        reporter.init(read, ee, function (error) {
-
-            expect(error).to.not.exist();
-            expect(reporter._state.timeout).to.exist();
-
-            read.push({ event: 'request', id: 1, timestamp: Date.now() });
-            read.push(null);
-
-            ee.emit('stop');
-
-            reporter._streams.write.on('finish', function () {
-
-                expect(reporter._streams.write.bytesWritten).to.equal(53);
-                expect(reporter._streams.write._writableState.ended).to.be.true();
-                expect(reporter._state.timeout._timeout._idleTimeout).to.equal(-1);
-
-                internals.removeLog(reporter._streams.write.path);
-
-                done();
-            });
-        });
-    });
-
-    it('does not clear the timeout if rotate has not been set', function (done) {
-
-        var reporter = new GoodFile({ request: '*' }, {
-            path: internals.tempDir
-        });
-
-        var ee = new EventEmitter();
-        var read = internals.readStream();
-        var called = false;
-
-        var clear = Bt.clearTimeout;
-        Bt.clearTimeout = function () {
-
-            called = true;
-        };
-
-        reporter.init(read, ee, function (error) {
-
-            expect(error).to.not.exist();
-            expect(reporter._state.timeout).to.not.exist();
-
-            read.push({ event: 'request', id: 1, timestamp: Date.now() });
-            read.push(null);
-
-            ee.emit('stop');
-            Bt.clearTimeout = clear;
-
-            reporter._streams.write.on('finish', function () {
-
-                expect(reporter._streams.write.bytesWritten).to.equal(53);
-                expect(reporter._streams.write._writableState.ended).to.be.true();
-
-                internals.removeLog(reporter._streams.write.path);
-                expect(called).to.be.false();
-
-                done();
-            });
-        });
-    });
-
-    it('logs an error if one occurs on the write stream and tears down the pipeline', function (done) {
-
-        var file = Hoek.uniqueFilename(internals.tempDir);
-        var reporter = new GoodFile({ request: '*' }, file);
-        var ee = new EventEmitter();
-        var logError = console.error;
-        var read = internals.readStream();
-
-        console.error = function (value) {
-
-            console.error = logError;
-            expect(value.message).to.equal('mock error');
-            internals.removeLog(reporter._streams.write.path);
+            expect(filestream.path).to.equal(file);
+            expect(filestream.fd).to.be.a.number();
             done();
-        };
-
-        reporter.init(read, ee, function (error) {
-
-            expect(error).to.not.exist();
-            reporter._streams.write.emit('error', new Error('mock error'));
         });
     });
 
-    it('properly sanitizes `format`, `prefix` and `extension`', function (done) {
+    it('reuses the same file when passing a file name', { plan: 4 }, (done) => {
 
-        var sep = Path.sep;
-        var reporter = new GoodFile({ log: '*' }, {
-            path: internals.tempDir,
-            format: 'Y' + sep + 'M' + sep,
-            extension: 'foo' + sep + 'bar'
-        });
+        const file = Hoek.uniqueFilename(internals.tempDir);
+        const filestream1 = new GoodFile(file);
+        const filestream2 = new GoodFile(file);
+        const read1 = internals.readStream();
+        const read2 = internals.readStream();
 
-        expect(reporter._settings.format).to.equal('Y-M-');
-        expect(reporter._settings.extension).to.equal('.foo-bar');
+        read1.pipe(new SafeJson(null, { separator: '\n' })).pipe(filestream1);
+        expect(filestream1.path).to.equal(file);
 
-        done();
-    });
+        for (let i = 0; i < 20; ++i) {
+            read1.push({ id: i, text: 'first write' });
+        }
+        read1.push(null);
 
-    it('writes to the current file and does not create a new one', function (done) {
+        read2.pipe(new SafeJson(null, { separator: '\n' })).pipe(filestream2);
+        expect(filestream2.path).to.equal(file);
 
-        var file = Hoek.uniqueFilename(internals.tempDir);
-        var reporter = new GoodFile({ request: '*' }, file);
-        var ee = new EventEmitter();
-        var read = internals.readStream();
+        for (let i = 0; i < 20; ++i) {
+            read2.push({ id: i, text: 'second write' });
+        }
+        read2.push(null);
 
-        reporter.init(read, ee, function (error) {
+        filestream2.on('finish', () => {
 
-            expect(error).to.not.exist();
-            expect(reporter._streams.write.path).to.equal(file);
+            internals.getLog(filestream2.path, (err, data) => {
 
-            reporter._streams.write.on('finish', function () {
-
-                expect(error).to.not.exist();
-                expect(reporter._streams.write.bytesWritten).to.equal(1260);
-
-                internals.removeLog(reporter._streams.write.path);
-
+                expect(err).to.not.exist();
+                expect(data).to.have.length(40);
                 done();
             });
+        });
+    });
 
-            for (var i = 0; i < 20; ++i) {
-                read.push({ event: 'request', statusCode: 200, id: i, tag: 'my test ' + i });
+    it('can handle a large number of events', { plan: 1 }, (done) => {
+
+        const file = Hoek.uniqueFilename(internals.tempDir);
+        const filestream = new GoodFile(file);
+        const read = internals.readStream();
+        read.pipe(new SafeJson()).pipe(filestream);
+
+
+        filestream.on('finish', () => {
+
+            expect(filestream.bytesWritten).to.equal(717854);
+            done();
+        });
+
+        for (let i = 0; i <= 10000; ++i) {
+            read.push({ id: i, timestamp: Date.now(), value: 'value for iteration ' + i });
+        }
+        read.push(null);
+    });
+
+    it('will log events even after a delay', { plan: 1 }, (done) => {
+
+        const file = Hoek.uniqueFilename(internals.tempDir);
+        const filestream = new GoodFile(file);
+        const read = internals.readStream();
+        read.pipe(new SafeJson()).pipe(filestream);
+
+
+        filestream.on('finish', () => {
+
+            expect(filestream.bytesWritten).to.equal(13296);
+            done();
+        });
+
+        for (let i = 0; i <= 100; ++i) {
+            read.push({ id: i, timestamp: Date.now(), value: 'value for iteration ' + i });
+        }
+
+        setTimeout(() => {
+
+            for (let i = 0; i <= 100; ++i) {
+                read.push({ id: i, timestamp: Date.now(), value: 'inner iteration ' + i });
             }
 
             read.push(null);
-        });
+        }, 500);
     });
 
-    it('handles circular references in objects', function (done) {
+    it('creates path to logs file if it does not exist', { plan: 2 }, (done) => {
 
-        var file = Hoek.uniqueFilename(internals.tempDir);
-        var reporter = new GoodFile({ request: '*' }, file);
-        var ee = new EventEmitter();
-        var read = internals.readStream();
+        const dir = Path.join(internals.tempDir, 'test');
+        const file = Hoek.uniqueFilename(dir);
 
-        reporter.init(read, ee, function (error) {
-
-            expect(error).to.not.exist();
-
-            var data = {
-                id: 1,
-                event: 'request',
-                timestamp: Date.now()
-            };
-
-            data._data = data;
-
-            reporter._streams.write.on('finish', function () {
-
-                internals.getLog(reporter._streams.write.path, function (err, results) {
-
-                    expect(err).to.not.exist();
-                    expect(results.length).to.equal(1);
-                    expect(results[0]._data).to.equal('[Circular ~]');
-
-                    internals.removeLog(reporter._streams.write.path);
-
-                    done();
-                });
-            });
-
-            read.push(data);
-            read.push(null);
-        });
-    });
-
-    it('can handle a large number of events', function (done) {
-
-        var file = Hoek.uniqueFilename(internals.tempDir);
-        var reporter = new GoodFile({ request: '*' }, file);
-        var ee = new EventEmitter();
-        var read = internals.readStream();
-
-        reporter.init(read, ee, function (error) {
-
-            expect(error).to.not.exist();
-            expect(reporter._streams.write.path).to.equal(file);
-
-            reporter._streams.write.on('finish', function () {
-
-                expect(reporter._streams.write.bytesWritten).to.equal(907873);
-                internals.removeLog(reporter._streams.write.path);
-
-                done();
-            });
-
-            for (var i = 0; i <= 10000; i++) {
-                read.push({ event: 'request', id: i, timestamp: Date.now(), value: 'value for iteration ' + i });
-            }
-            read.push(null);
-        });
-    });
-
-    it('will log events even after a delay', function (done) {
-
-        var file = Hoek.uniqueFilename(internals.tempDir);
-        var reporter = new GoodFile({ request: '*' }, file);
-        var ee = new EventEmitter();
-        var read = internals.readStream();
-
-        reporter.init(read, ee, function (error) {
-
-            expect(error).to.not.exist();
-            expect(reporter._streams.write.path).to.equal(file);
-
-            reporter._streams.write.on('finish', function () {
-
-                expect(reporter._streams.write.bytesWritten).to.equal(17134);
-                internals.removeLog(reporter._streams.write.path);
-                done();
-            });
-
-            for (var i = 0; i <= 100; i++) {
-                read.push({ event: 'request', id: i, timestamp: Date.now(), value: 'value for iteration ' + i });
-            }
-
-            setTimeout(function () {
-
-                for (var j = 0; j <= 100; j++) {
-                    read.push({ event: 'request', id: j, timestamp: Date.now(), value: 'inner iteration ' + j });
-                }
-
-                read.push(null);
-            }, 500);
-        });
-    });
-
-    it('rotates logs on the specified interval', function (done) {
-
-        var reporter = new GoodFile({ request: '*' }, {
-            path: internals.tempDir,
-            rotate: 'daily',
-            format: 'YY#DDDD#MM',
-            extension: ''
-        });
-
-        var Moment = require('moment');
-
-        var ee = new EventEmitter();
-        var read = internals.readStream();
-
-        var files = [];
-
-        var getFile = reporter.getFile;
-
-        reporter.getFile = function () {
-
-            var result = getFile.call(this);
-
-            files.push(result);
-
-            return result;
-        };
-
-        // Moment function override for tests
-        var oldMoment = Moment;
-        var oldMomentUtc = Moment.utc;
-
-        Moment.utc = function () {
-
-            var returnval = oldMomentUtc();
-            returnval.endOf = function () {
-
-                return this.add(100, 'ms');
-            };
-            return returnval;
-        };
-        Moment.prototype = oldMoment.prototype;
-
-        reporter.init(read, ee, function (error) {
-
-            expect(error).to.not.exist();
-
-            for (var i = 0; i < 10; ++i) {
-
-                read.push({ event: 'request', statusCode: 200, id: i, tag: 'my test 1 - ' + i });
-            }
-
-            setTimeout(function () {
-
-                reporter._streams.write.on('finish', function () {
-
-                    internals.getLog(files[0], function (err, fileOne) {
-
-                        expect(err).to.not.exist();
-
-                        internals.getLog(files[1], function (err, fileTwo) {
-
-                            expect(err).to.not.exist();
-
-                            var one = fileOne[0];
-                            var two = fileTwo[0];
-
-                            expect(fileOne).to.have.length(10);
-                            expect(fileTwo).to.have.length(10);
-
-                            expect(one).to.deep.equal({
-                                event: 'request',
-                                statusCode: 200,
-                                id: 0,
-                                tag: 'my test 1 - 0'
-                            });
-                            expect(two).to.deep.equal({
-                                event: 'request',
-                                statusCode: 200,
-                                id: 0,
-                                tag: 'my test 2 - 0'
-                            });
-
-                            for (var j = 0, jl = files.length; j < jl; ++j) {
-                                expect(/good-file-\d+#\d+#\d+-[\w,\d]+$/g.test(files[j])).to.be.true();
-                                internals.removeLog(files[j]);
-                            }
-
-                            done();
-                        });
-                    });
-                });
-
-                for (var k = 0; k < 10; ++k) {
-                    read.push({ event: 'request', statusCode: 200, id: k, tag: 'my test 2 - ' + k });
-                }
-
-                read.push(null);
-            }, 175);
-        });
-    });
-
-    it('creates path to logs file if it does not exist', function (done) {
-
-        var dir = Path.join(internals.tempDir, 'test');
-        var file = Hoek.uniqueFilename(dir);
-
-        Fs.stat(file, function (error) {
+        Fs.stat(file, (error) => {
 
             // We expect an error to be thrown, because this directory should
             // not yet exist.
             expect(error).to.exist();
 
-            var reporter = new GoodFile({ request: '*' }, file);
-            var ee = new EventEmitter();
-            var read = internals.readStream();
+            const filestream = new GoodFile(file);
+            const read = internals.readStream();
+            read.pipe(new SafeJson()).pipe(filestream);
 
-            reporter.init(read, ee, function (err) {
+            filestream.on('finish', () => {
 
-                expect(err).to.not.exist();
-                expect(reporter._streams.write.path).to.equal(file);
+                expect(filestream.bytesWritten).to.equal(24);
 
-                reporter._streams.write.on('finish', function () {
-
-                    expect(reporter._streams.write.bytesWritten).to.equal(60);
-
-                    // Be extra certain that the directory was created.
-                    Fs.stat(file, function (err) {
-
-                        expect(err).to.not.exist();
-
-                        // Ensure that we have removed all files from this temp directory before we delete it.
-                        Fs.readdirSync(dir).forEach(function (f) {
-
-                            internals.removeLog(Path.join(dir, f));
-                        });
-
-                        Fs.rmdirSync(dir);
-
-                        done();
-                    });
-                });
-
-                read.push({ event: 'request', statusCode: 200, id: 0, tag: 'my test' });
-
-                read.push(null);
+                Fs.stat(file, done);
             });
+            read.push({ id: 0, tag: 'my test' });
+            read.push(null);
         });
     });
 
-    describe('init()', function () {
+    it('will emit "error" event if the file can not be opened', { plan: 4 }, (done) => {
 
-        it('properly sets up the path and file information if the file name is specified', function (done) {
+        const file = Hoek.uniqueFilename(internals.tempDir);
+        StandIn.replace(Fs, 'ensureFile', (stand, path, callback) => {
 
-            var file = Hoek.uniqueFilename(internals.tempDir);
-            var reporter = new GoodFile({ log: '*' }, file);
-            var ee = new EventEmitter();
-            var stream = internals.readStream();
+            stand.restore();
+            expect(path).to.equal(file);
+            // Do this to accurately fake Fs.ensureFile
+            setImmediate(() => {
 
-            reporter.init(stream, ee, function (error) {
-
-                expect(error).to.not.exist();
-
-                expect(reporter._streams.write.path).to.equal(file);
-
-                internals.removeLog(reporter._streams.write.path);
-                done();
+                callback(new Error('test error'));
             });
         });
+        const filestream = new GoodFile(file);
+        filestream.on('error', (err) => {
 
-        it('properly creates a random file if the directory option is specified', function (done) {
-
-            var reporter = new GoodFile({ log: '*' }, { path: internals.tempDir });
-            var ee = new EventEmitter();
-            var stream = internals.readStream();
-
-            reporter.init(stream, ee, function (error) {
-
-                expect(error).to.not.exist();
-                expect(/good-file-\d+-.+.log/g.test(reporter._streams.write.path)).to.be.true();
-
-                internals.removeLog(reporter._streams.write.path);
-                done();
-            });
-        });
-
-        it('uses the options passed via directory', function (done) {
-
-            var reporter = new GoodFile({ log: '*' }, {
-                path: internals.tempDir,
-                extension: 'fun',
-                prefix: 'ops-log',
-                format: 'YY$DDDD'
-            });
-            var ee = new EventEmitter();
-            var stream = internals.readStream();
-
-            reporter.init(stream, ee, function (error) {
-
-                expect(error).to.not.exist();
-                expect(/\/ops-log-\d{2}\$\d{3}-.+.fun/g.test(reporter._streams.write.path)).to.be.true();
-
-                internals.removeLog(reporter._streams.write.path);
-                done();
-            });
+            expect(err).to.be.an.instanceOf(Error);
+            expect(err.message).to.equal('test error');
+            expect(filestream.fd).to.be.null();
+            done();
         });
     });
 
+    after((done) => {
+
+        Fs.remove(internals.tempDir, done);
+    });
 });
