@@ -18,4 +18,4 @@ Creates a new GoodFile write stream.
 
 ## Rotation
 
-If you're looking for a stream with built-in rotation options, please check out [stream-rotate](https://github.com/nw/stream-rotate) or [rotating-file-stream](https://github.com/iccicci/rotating-file-stream). good-file no longer does file rotation because there are better ways to deal with log rotation at the operating system level.
+If you're looking for a stream with built-in rotation options, please check out [rotating-file-stream](https://github.com/iccicci/rotating-file-stream). good-file no longer does file rotation because there are better ways to deal with log rotation at the operating system level.
